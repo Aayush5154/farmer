@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* =========================
+   BASE LAYER OVERRIDES
+   ========================= */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+/* =========================
+   ROOT CONTAINER
+   ========================= */
+
+#root {
+  min-height: 100vh;
+}
+
+/* =========================
+   OPTIONAL GLOBAL SAFETY
+   ========================= */
+
+button {
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  outline: none;
+}
+    

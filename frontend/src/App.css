@@ -1,0 +1,71 @@
+/* =========================
+   GLOBAL STYLES
+   ========================= */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
+    sans-serif;
+  background-color: #f9fafb;
+  color: #111827;
+}
+
+/* =========================
+   ROOT CONTAINER
+   ========================= */
+
+#root {
+  min-height: 100vh;
+}
+
+/* =========================
+   LINKS (SAFE DEFAULT)
+   ========================= */
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* =========================
+   BUTTON RESET
+   ========================= */
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* =========================
+   FORM INPUT SAFETY
+   ========================= */
+
+input,
+textarea,
+select {
+  font-family: inherit;
+  outline: none;
+}
+
+/* =========================
+   SCROLLBAR (OPTIONAL, CLEAN)
+   ========================= */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 4px;
+}
