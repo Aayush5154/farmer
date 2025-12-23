@@ -52,11 +52,13 @@ app.use(cookieParser())
 import userRouter from "./src/routes/user.routes.js"
 import sensorRouter from "./src/routes/sensor.routes.js"
 import claimRouter from "./src/routes/claim.routes.js"
+import internalRoutes from "./src/routes/internal.routes.js"
 
 
 app.use("/api/v1/user", userRouter)
 app.use("/api/v1/sensor", sensorRouter)
 app.use("/api/v1/claim", claimRouter)
+app.use("/internal", internalRoutes)
 
 
 app.use((err, req, res, next) => {

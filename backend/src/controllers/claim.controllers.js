@@ -4,7 +4,7 @@ import { ApiResponse } from "../utils/ApiResponse.js"
 import { InsuranceClaim } from "../models/InsuranceClaim.models.js"
 import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { SensorData } from "../models/SensorData.models.js"
-import { predictClaimAmount } from "../services/ml.service.js"
+import { predictClaimAmount, triggerMLTraining } from "../services/ml.service.js"
 
 // --------------------
 // SENSOR THRESHOLDS
@@ -24,9 +24,7 @@ const applyForClaim = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Crop type, reason and expected amount are required")
   }
 
-  // --------------------
   // IMAGE UPLOAD
-  // --------------------
   const imageLocalPath = req.file?.path
   if (!imageLocalPath) {
     throw new ApiError(400, "Damage image is required")
@@ -37,17 +35,13 @@ const applyForClaim = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Image upload failed")
   }
 
-  // --------------------
   // SENSOR DATA
-  // --------------------
   let latestSensor = null
   if (sensorDataId) {
     latestSensor = await SensorData.findById(sensorDataId)
   }
 
-  // --------------------
   // RULE ENGINE
-  // --------------------
   let matchedConditions = 0
   let isBorderline = false
 
@@ -66,35 +60,23 @@ const applyForClaim = asyncHandler(async (req, res) => {
       (soilTemp >= 33 && soilTemp <= 35)
   }
 
-  // --------------------
   // AUTO DECISION
-  // --------------------
   let autoStatus = "review"
+  if (!latestSensor) autoStatus = "review"
+  else if (matchedConditions >= 2) autoStatus = "approved"
+  else if (matchedConditions === 1 || isBorderline) autoStatus = "review"
+  else autoStatus = "rejected"
 
-  if (!latestSensor) {
-    autoStatus = "review"
-  } else if (matchedConditions >= 2) {
-    autoStatus = "approved"
-  } else if (matchedConditions === 1 || isBorderline) {
-    autoStatus = "review"
-  } else {
-    autoStatus = "rejected"
-  }
-
-  // --------------------
   // AMOUNT LOGIC
-  // --------------------
   const expected = Number(expectedAmount)
+  const MAX_PAYOUT = 500000
   let approvedAmount = 0
   let decisionSource = "RULE_ENGINE"
   let mlUsed = false
 
   if (autoStatus === "approved") {
-    // Rule-based fallback
-    approvedAmount =
-      matchedConditions >= 3 ? expected * 0.9 : expected * 0.6
+    approvedAmount = matchedConditions >= 3 ? expected * 0.9 : expected * 0.6
 
-    // ---------- ML PREDICTION ----------
     if (latestSensor) {
       try {
         const mlAmount = await predictClaimAmount({
@@ -111,19 +93,20 @@ const applyForClaim = asyncHandler(async (req, res) => {
           decisionSource = "ML_MODEL"
           mlUsed = true
         }
-      } catch (err) {
-        // ML failure should never break claim flow
-        decisionSource = "RULE_ENGINE"
-        mlUsed = false
-      }
+      } catch {}
     }
+
+    // ✅ FINAL SAFETY RULES
+    approvedAmount = Math.min(
+      approvedAmount,   // ML / rule amount
+      expected,         // farmer asked amount
+      MAX_PAYOUT        // absolute cap (5 lakh)
+    )
   }
 
   approvedAmount = Math.round(approvedAmount)
 
-  // --------------------
   // SAVE CLAIM
-  // --------------------
   const claim = await InsuranceClaim.create({
     farmerId: req.user._id,
     cropType,
@@ -143,6 +126,7 @@ const applyForClaim = asyncHandler(async (req, res) => {
 
     decisionSource,
     mlUsed,
+    usedForTraining: false,
 
     history: [
       {
@@ -162,24 +146,53 @@ const applyForClaim = asyncHandler(async (req, res) => {
     ]
   })
 
-  return res.status(201).json(
-    new ApiResponse(201, claim, "Insurance claim submitted successfully")
-  )
+  // 🔥 AUTO‑RETRAIN AFTER 3 APPROVED CLAIMS
+  if (claim.status === "approved") {
+    const trainingClaims = await InsuranceClaim.find({
+      status: "approved",
+      usedForTraining: false
+    })
+      .limit(3)
+      .populate("sensorDataId")
+
+    if (trainingClaims.length >= 3) {
+      const payload = trainingClaims.map(c => ({
+        soilMoisture: c.sensorDataId?.soilMoisture,
+        airTemp: c.sensorDataId?.airTemp,
+        humidity: c.sensorDataId?.humidity,
+        soilTemp: c.sensorDataId?.soilTemp,
+        expectedAmount: c.expectedAmount,
+        approvedAmount: c.approvedAmount
+      }))
+
+      triggerMLTraining(payload)
+        .then(async () => {
+          await InsuranceClaim.updateMany(
+            { _id: { $in: trainingClaims.map(c => c._id) } },
+            { $set: { usedForTraining: true } }
+          )
+        })
+        .catch(() => {})
+    }
+  }
+
+  return res
+    .status(201)
+    .json(new ApiResponse(201, claim, "Insurance claim submitted successfully"))
 })
+
 
 // ====================
 // GET MY CLAIMS
 // ====================
 const getMyClaims = asyncHandler(async (req, res) => {
-  const claims = await InsuranceClaim.find({
-    farmerId: req.user._id
-  })
+  const claims = await InsuranceClaim.find({ farmerId: req.user._id })
     .sort({ createdAt: -1 })
     .populate("sensorDataId")
 
-  return res.status(200).json(
-    new ApiResponse(200, claims, "Your insurance claims fetched successfully")
-  )
+  return res
+    .status(200)
+    .json(new ApiResponse(200, claims, "Your insurance claims fetched successfully"))
 })
 
 // ====================
@@ -197,9 +210,9 @@ const getAllClaims = asyncHandler(async (req, res) => {
     .populate("sensorDataId")
     .sort({ createdAt: -1 })
 
-  return res.status(200).json(
-    new ApiResponse(200, claims, "All insurance claims fetched")
-  )
+  return res
+    .status(200)
+    .json(new ApiResponse(200, claims, "All insurance claims fetched"))
 })
 
 // ====================
@@ -231,9 +244,14 @@ const updateClaimStatus = asyncHandler(async (req, res) => {
   claim.approvedAt = new Date()
 
   if (status === "approved") {
-    claim.approvedAmount = Number(
-      approvedAmount || claim.approvedAmount
-    )
+    if (claim.autoStatus === "review" && approvedAmount == null) {
+      throw new ApiError(400, "approvedAmount is required for reviewed claims")
+    }
+
+    claim.approvedAmount = Number(approvedAmount || claim.approvedAmount || 0)
+    claim.decisionSource = "ADMIN"
+    claim.mlUsed = false
+    claim.usedForTraining = false
   }
 
   claim.history.push({
@@ -244,9 +262,9 @@ const updateClaimStatus = asyncHandler(async (req, res) => {
 
   await claim.save()
 
-  return res.status(200).json(
-    new ApiResponse(200, claim, `Claim ${status} successfully`)
-  )
+  return res
+    .status(200)
+    .json(new ApiResponse(200, claim, `Claim ${status} successfully`))
 })
 
 export {
