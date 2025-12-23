@@ -6,17 +6,12 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { SensorData } from "../models/SensorData.models.js"
 import { predictClaimAmount, triggerMLTraining } from "../services/ml.service.js"
 
-// --------------------
-// SENSOR THRESHOLDS
-// --------------------
+
 const SOIL_MOISTURE_LOW = 30
 const AIR_TEMP_HIGH = 40
 const HUMIDITY_LOW = 25
 const SOIL_TEMP_HIGH = 35
 
-// ====================
-// APPLY FOR CLAIM
-// ====================
 const applyForClaim = asyncHandler(async (req, res) => {
   const { cropType, reason, expectedAmount, sensorDataId } = req.body
 
@@ -24,7 +19,6 @@ const applyForClaim = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Crop type, reason and expected amount are required")
   }
 
-  // IMAGE UPLOAD
   const imageLocalPath = req.file?.path
   if (!imageLocalPath) {
     throw new ApiError(400, "Damage image is required")
@@ -35,13 +29,11 @@ const applyForClaim = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Image upload failed")
   }
 
-  // SENSOR DATA
   let latestSensor = null
   if (sensorDataId) {
     latestSensor = await SensorData.findById(sensorDataId)
   }
 
-  // RULE ENGINE
   let matchedConditions = 0
   let isBorderline = false
 
@@ -60,10 +52,13 @@ const applyForClaim = asyncHandler(async (req, res) => {
       (soilTemp >= 33 && soilTemp <= 35)
   }
 
-  // AUTO DECISION
+
+  const confidenceScore = matchedConditions / 4 // value between 0 and 1
+  const HIGH_CONFIDENCE_THRESHOLD = 0.75
+
   let autoStatus = "review"
   if (!latestSensor) autoStatus = "review"
-  else if (matchedConditions >= 2) autoStatus = "approved"
+  else if (confidenceScore >= HIGH_CONFIDENCE_THRESHOLD) autoStatus = "approved"
   else if (matchedConditions === 1 || isBorderline) autoStatus = "review"
   else autoStatus = "rejected"
 
@@ -75,7 +70,7 @@ const applyForClaim = asyncHandler(async (req, res) => {
   let mlUsed = false
 
   if (autoStatus === "approved") {
-    approvedAmount = matchedConditions >= 3 ? expected * 0.9 : expected * 0.6
+    approvedAmount = confidenceScore >= 0.9 ? expected * 0.9 : expected * 0.6
 
     if (latestSensor) {
       try {
@@ -96,11 +91,11 @@ const applyForClaim = asyncHandler(async (req, res) => {
       } catch {}
     }
 
-    // ✅ FINAL SAFETY RULES
+    // FINAL SAFETY RULES
     approvedAmount = Math.min(
-      approvedAmount,   // ML / rule amount
-      expected,         // farmer asked amount
-      MAX_PAYOUT        // absolute cap (5 lakh)
+      approvedAmount,
+      expected,
+      MAX_PAYOUT
     )
   }
 
@@ -141,12 +136,12 @@ const applyForClaim = asyncHandler(async (req, res) => {
             : autoStatus === "rejected"
             ? "auto_rejected"
             : "sent_for_review",
-        note: `System decision via ${decisionSource}`
+        note: `System decision via ${decisionSource} (confidence=${confidenceScore.toFixed(2)})`
       }
     ]
   })
 
-  // 🔥 AUTO‑RETRAIN AFTER 3 APPROVED CLAIMS
+  // AUTO‑RETRAIN AFTER 3 APPROVED CLAIMS
   if (claim.status === "approved") {
     const trainingClaims = await InsuranceClaim.find({
       status: "approved",
@@ -180,7 +175,6 @@ const applyForClaim = asyncHandler(async (req, res) => {
     .status(201)
     .json(new ApiResponse(201, claim, "Insurance claim submitted successfully"))
 })
-
 
 // ====================
 // GET MY CLAIMS

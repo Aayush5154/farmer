@@ -1,10 +1,11 @@
 import axios from "axios"
 
 const ML_BASE_URL = "http://127.0.0.1:5000"
-const BACKEND_BASE = "http://localhost:3000"
+const BACKEND_BASE = "http://localhost:8000"
 
 /**
  * Predict approved claim amount using ML
+ * Returns: { amount, confidence }
  */
 export const predictClaimAmount = async (payload) => {
   try {
@@ -16,7 +17,28 @@ export const predictClaimAmount = async (payload) => {
       return null
     }
 
-    return Math.round(res.data.predicted_amount)
+    const amount = Math.round(res.data.predicted_amount)
+
+    // 🔹 Confidence handling
+    // If ML sends confidence → use it
+    // Else → derive proxy confidence safely
+    let confidence = res.data.confidence
+
+    if (confidence == null) {
+      // Proxy confidence logic (safe & deterministic)
+      const diffRatio =
+        Math.abs(amount - payload.expectedAmount) /
+        Math.max(payload.expectedAmount, 1)
+
+      if (diffRatio < 0.15) confidence = 0.9
+      else if (diffRatio < 0.3) confidence = 0.7
+      else confidence = 0.4
+    }
+
+    return {
+      amount,
+      confidence
+    }
   } catch (err) {
     console.error("ML predict failed:", err.message)
     return null
@@ -25,11 +47,12 @@ export const predictClaimAmount = async (payload) => {
 
 /**
  * Trigger ML retraining after every 3 approved claims
+ * (UNCHANGED – already working)
  */
 export const triggerMLTraining = async () => {
   try {
     const claimsRes = await axios.get(
-      "http://localhost:8000/internal/training-claims"
+      `${BACKEND_BASE}/internal/training-claims`
     )
 
     const claims = claimsRes.data || []
@@ -46,10 +69,10 @@ export const triggerMLTraining = async () => {
       { claims }
     )
 
-    console.log("🔥 ML TRAIN RESPONSE:", res.data)
+    console.log("ML TRAIN RESPONSE:", res.data)
 
     await axios.post(
-      "http://localhost:8000/internal/mark-trained",
+      `${BACKEND_BASE}/internal/mark-trained`,
       { ids: claims.map(c => c._id) }
     )
 

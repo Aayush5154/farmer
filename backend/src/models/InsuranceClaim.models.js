@@ -49,6 +49,14 @@ const insuranceClaimSchema = new mongoose.Schema(
       default: 0
     },
 
+    // ===== CONFIDENCE (NEW – PART‑B) =====
+    confidenceScore: {
+      type: Number,
+      min: 0,
+      max: 1,
+      default: null // null for older claims
+    },
+
     // ===== ADMIN ACTION =====
     approvedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -82,6 +90,11 @@ const insuranceClaimSchema = new mongoose.Schema(
     sensorDataId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SensorData",
+      default: null
+    },
+    // ===== ML CONFIDENCE =====
+    confidenceScore: {
+      type: Number,
       default: null
     },
 
