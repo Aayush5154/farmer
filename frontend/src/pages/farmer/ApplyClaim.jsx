@@ -27,12 +27,15 @@ export default function ApplyClaim() {
   const onSubmit = async (data) => {
     try {
       const formData = new FormData()
+
+      // 🔑 BASIC CLAIM DATA
       formData.append("cropType", data.cropType)
       formData.append("reason", data.reason)
-      formData.append("damageImage", data.damageImage[0]) // MUST MATCH multer
+      formData.append("expectedAmount", data.expectedAmount) // ✅ NEW
+      formData.append("damageImage", data.damageImage[0])
 
+      // 🔑 OPTIONAL SENSOR DATA
       if (data.attachSensor) {
-        // Basic validation
         if (
           data.soilMoisture === undefined ||
           data.airTemp === undefined ||
@@ -44,27 +47,27 @@ export default function ApplyClaim() {
         }
 
         setSensorSaving(true)
-        // Create sensor data entry first and attach its id to the claim
+
         const payload = {
           deviceId: data.deviceId || "manual",
           soilMoisture: Number(data.soilMoisture),
           airTemp: Number(data.airTemp),
           humidity: Number(data.humidity),
-          soilTemp: Number(data.soilTemp)
+          soilTemp: Number(data.soilTemp),
         }
 
         const sensorRes = await api.post("/sensor/add", payload)
         const sensor = sensorRes.data?.data
+
         if (sensor && sensor._id) {
           formData.append("sensorDataId", sensor._id)
         }
+
         setSensorSaving(false)
       }
 
       await api.post("/claim/apply", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+        headers: { "Content-Type": "multipart/form-data" },
       })
 
       toast.success("Claim submitted successfully")
@@ -79,10 +82,7 @@ export default function ApplyClaim() {
 
   return (
     <div className="max-w-2xl mx-auto">
-      <Link
-        to="/"
-        className="text-emerald-600 hover:text-emerald-700 text-sm"
-      >
+      <Link to="/" className="text-emerald-600 hover:text-emerald-700 text-sm">
         ← Back to Dashboard
       </Link>
 
@@ -106,6 +106,15 @@ export default function ApplyClaim() {
             className="w-full border rounded-lg p-3"
           />
 
+          {/* ✅ NEW FIELD */}
+          <input
+            type="number"
+            step="any"
+            {...register("expectedAmount", { required: true })}
+            placeholder="Expected Insurance Amount (₹)"
+            className="w-full border rounded-lg p-3"
+          />
+
           <input
             type="file"
             accept="image/*"
@@ -121,15 +130,18 @@ export default function ApplyClaim() {
             />
           )}
 
-          {/* Sensor readings (manual for prototype) */}
+          {/* SENSOR SECTION */}
           <div className="pt-4 border-t">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" {...register("attachSensor")} />
-              <span className="text-gray-600">Attach sensor readings (manual)</span>
+              <span className="text-gray-600">
+                Attach sensor readings (manual)
+              </span>
             </label>
 
             {watch("attachSensor") && (
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+
                 <input
                   {...register("deviceId")}
                   placeholder="Device ID (optional)"
@@ -140,7 +152,6 @@ export default function ApplyClaim() {
                   {...register("soilMoisture")}
                   placeholder="Soil Moisture (%)"
                   type="number"
-                  step="any"
                   className="w-full border rounded-lg p-3"
                 />
 
@@ -148,7 +159,6 @@ export default function ApplyClaim() {
                   {...register("airTemp")}
                   placeholder="Air Temperature (°C)"
                   type="number"
-                  step="any"
                   className="w-full border rounded-lg p-3"
                 />
 
@@ -156,7 +166,6 @@ export default function ApplyClaim() {
                   {...register("humidity")}
                   placeholder="Humidity (%)"
                   type="number"
-                  step="any"
                   className="w-full border rounded-lg p-3"
                 />
 
@@ -164,7 +173,6 @@ export default function ApplyClaim() {
                   {...register("soilTemp")}
                   placeholder="Soil Temperature (°C)"
                   type="number"
-                  step="any"
                   className="w-full border rounded-lg p-3"
                 />
 
@@ -183,7 +191,9 @@ export default function ApplyClaim() {
                     Use sample readings
                   </button>
 
-                  <div className="text-sm text-gray-500">(These readings will be saved as sensor data and attached to the claim)</div>
+                  <div className="text-sm text-gray-500">
+                    (These readings will be saved as sensor data and attached to the claim)
+                  </div>
                 </div>
               </div>
             )}

@@ -1,0 +1,6 @@
+cropType,soilMoisture,airTemp,humidity,soilTemp,expectedAmount,approvedAmount
+wheat,25,42,20,36,100000,90000
+rice,40,35,60,30,80000,48000
+corn,28,41,22,34,90000,54000
+wheat,22,45,18,38,120000,108000
+rice,35,39,30,33,70000,42000
