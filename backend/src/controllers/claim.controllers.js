@@ -6,12 +6,17 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { SensorData } from "../models/SensorData.models.js"
 import { predictClaimAmount, triggerMLTraining } from "../services/ml.service.js"
 
-
+// --------------------
+// SENSOR THRESHOLDS
+// --------------------
 const SOIL_MOISTURE_LOW = 30
 const AIR_TEMP_HIGH = 40
 const HUMIDITY_LOW = 25
 const SOIL_TEMP_HIGH = 35
 
+// ====================
+// APPLY FOR CLAIM
+// ====================
 const applyForClaim = asyncHandler(async (req, res) => {
   const { cropType, reason, expectedAmount, sensorDataId } = req.body
 
@@ -19,6 +24,7 @@ const applyForClaim = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Crop type, reason and expected amount are required")
   }
 
+  // IMAGE UPLOAD
   const imageLocalPath = req.file?.path
   if (!imageLocalPath) {
     throw new ApiError(400, "Damage image is required")
@@ -29,11 +35,13 @@ const applyForClaim = asyncHandler(async (req, res) => {
     throw new ApiError(500, "Image upload failed")
   }
 
+  // SENSOR DATA
   let latestSensor = null
   if (sensorDataId) {
     latestSensor = await SensorData.findById(sensorDataId)
   }
 
+  // RULE ENGINE
   let matchedConditions = 0
   let isBorderline = false
 
@@ -52,8 +60,10 @@ const applyForClaim = asyncHandler(async (req, res) => {
       (soilTemp >= 33 && soilTemp <= 35)
   }
 
-
-  const confidenceScore = matchedConditions / 4 // value between 0 and 1
+  // ====================
+  // CONFIDENCE (PART‑B)
+  // ====================
+  const confidenceScore = matchedConditions / 4 // 0 → 1
   const HIGH_CONFIDENCE_THRESHOLD = 0.75
 
   let autoStatus = "review"
@@ -62,9 +72,12 @@ const applyForClaim = asyncHandler(async (req, res) => {
   else if (matchedConditions === 1 || isBorderline) autoStatus = "review"
   else autoStatus = "rejected"
 
+  // ====================
   // AMOUNT LOGIC
+  // ====================
   const expected = Number(expectedAmount)
   const MAX_PAYOUT = 500000
+
   let approvedAmount = 0
   let decisionSource = "RULE_ENGINE"
   let mlUsed = false
@@ -74,7 +87,7 @@ const applyForClaim = asyncHandler(async (req, res) => {
 
     if (latestSensor) {
       try {
-        const mlAmount = await predictClaimAmount({
+        const mlResult = await predictClaimAmount({
           cropType,
           soilMoisture: latestSensor.soilMoisture,
           airTemp: latestSensor.airTemp,
@@ -83,8 +96,8 @@ const applyForClaim = asyncHandler(async (req, res) => {
           expectedAmount: expected
         })
 
-        if (mlAmount !== null && !isNaN(mlAmount)) {
-          approvedAmount = mlAmount
+        if (mlResult?.amount != null && !isNaN(mlResult.amount)) {
+          approvedAmount = mlResult.amount
           decisionSource = "ML_MODEL"
           mlUsed = true
         }
@@ -101,7 +114,9 @@ const applyForClaim = asyncHandler(async (req, res) => {
 
   approvedAmount = Math.round(approvedAmount)
 
+  // ====================
   // SAVE CLAIM
+  // ====================
   const claim = await InsuranceClaim.create({
     farmerId: req.user._id,
     cropType,
@@ -123,6 +138,9 @@ const applyForClaim = asyncHandler(async (req, res) => {
     mlUsed,
     usedForTraining: false,
 
+    // ✅ STORED IN DB
+    confidenceScore,
+
     history: [
       {
         action: "created",
@@ -136,12 +154,16 @@ const applyForClaim = asyncHandler(async (req, res) => {
             : autoStatus === "rejected"
             ? "auto_rejected"
             : "sent_for_review",
-        note: `System decision via ${decisionSource} (confidence=${confidenceScore.toFixed(2)})`
+        note: `System decision via ${decisionSource} (confidence=${confidenceScore.toFixed(
+          2
+        )})`
       }
     ]
   })
 
+  // ====================
   // AUTO‑RETRAIN AFTER 3 APPROVED CLAIMS
+  // ====================
   if (claim.status === "approved") {
     const trainingClaims = await InsuranceClaim.find({
       status: "approved",

@@ -93,10 +93,6 @@ const insuranceClaimSchema = new mongoose.Schema(
       default: null
     },
     // ===== ML CONFIDENCE =====
-    confidenceScore: {
-      type: Number,
-      default: null
-    },
 
     // ===== HISTORY =====
     history: [
