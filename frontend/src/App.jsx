@@ -15,6 +15,7 @@ const AdminDashboard = lazy(() => import("./pages/admin/AdminDashboard"))
 import ProtectedRoute from "./routes/ProtectedRoute"
 import AdminRoute from "./routes/AdminRoute"
 import Layout from "./components/Layout"
+import AdminAnalytics from "./pages/admin/AdminAnalytics"
 
 function App() {
   return (
@@ -74,6 +75,17 @@ function App() {
               </AdminRoute>
             }
           />
+          <Route
+            path="/admin/analytics"
+            element={
+              <AdminRoute>
+                <Layout>
+                  <AdminAnalytics/>
+                </Layout>
+              </AdminRoute>
+            }
+          />
+
         </Routes>
       </Suspense>
     </BrowserRouter>

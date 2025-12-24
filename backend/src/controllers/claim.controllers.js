@@ -6,17 +6,11 @@ import { uploadOnCloudinary } from "../utils/cloudinary.js"
 import { SensorData } from "../models/SensorData.models.js"
 import { predictClaimAmount, triggerMLTraining } from "../services/ml.service.js"
 
-// --------------------
-// SENSOR THRESHOLDS
-// --------------------
 const SOIL_MOISTURE_LOW = 30
 const AIR_TEMP_HIGH = 40
 const HUMIDITY_LOW = 25
 const SOIL_TEMP_HIGH = 35
 
-// ====================
-// APPLY FOR CLAIM
-// ====================
 const applyForClaim = asyncHandler(async (req, res) => {
   const { cropType, reason, expectedAmount, sensorDataId } = req.body
 
@@ -24,7 +18,6 @@ const applyForClaim = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Crop type, reason and expected amount are required")
   }
 
-  // IMAGE UPLOAD
   const imageLocalPath = req.file?.path
   if (!imageLocalPath) {
     throw new ApiError(400, "Damage image is required")
